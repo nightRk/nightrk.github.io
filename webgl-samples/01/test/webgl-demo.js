@@ -2,7 +2,7 @@ var gl;
 
 function start() {
     //
-    var canvas = document.getElementById("glcanvas");
+    var canvas = document.getElementById("mainCanvas");
 
     // Initialize the GL context
     gl = initWebGL(canvas);
