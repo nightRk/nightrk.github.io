@@ -1,10 +1,11 @@
-var canvas;
+var mainCanvas;
 var renderingContext;
 var squareVerticesBuffer;
 var shaderProgram;
 var vertexPositionAttribute;
-var mvMatrix;
-var perspectiveMatrix;
+var transformUniform;
+var modelViewMatrix;
+var projectionMatrix;
 
 //
 // start
@@ -13,14 +14,17 @@ var perspectiveMatrix;
 // Figuratively, that is. There's nothing moving in this demo.
 //
 function start() {
-    canvas = document.getElementById("mainCanvas");
+    //
+    mainCanvas = document.getElementById("mainCanvas");
 
-    initWebGL(canvas); // Initialize the GL context
+    initialize(); // Initialize the GL context
 
     // Only continue if WebGL is available and working
 
     if (renderingContext !== null) {
-        renderingContext.clearColor(0.0, 0.0, 0.0, 1.0);      // Clear to black, fully opaque
+        //
+        //renderingContext.clearColor(0.0, 0.0, 0.0, 1.0);      // Clear to black, fully opaque
+        renderingContext.clearColor(0.25, 0.25, 0.25, 1.0);      // Clear to black, fully opaque
         renderingContext.clearDepth(1.0);                     // Clear everything
         renderingContext.enable(renderingContext.DEPTH_TEST); // Enable depth testing
         renderingContext.depthFunc(renderingContext.LEQUAL);  // Near things obscure far things
@@ -28,12 +32,12 @@ function start() {
         // Initialize the shaders; this is where all the lighting for the
         // vertices and so forth is established.
 
-        initShaders();
+        initializeShaders();
 
         // Here's where we call the routine that builds all the objects
         // we'll be drawing.
 
-        initBuffers();
+        initializeBuffers();
 
         // Set up to draw the scene periodically.
 
@@ -42,16 +46,17 @@ function start() {
 }
 
 //
-// initWebGL
+// initialize
 //
 // Initialize WebGL, returning the GL context or null if
 // WebGL isn't available or could not be initialized.
 //
-function initWebGL() {
+function initialize() {
+    //
     renderingContext = null;
 
     try {
-        renderingContext = canvas.getContext("webgl");
+        renderingContext = mainCanvas.getContext("webgl");
     }
     catch(e) {
     }
@@ -64,13 +69,13 @@ function initWebGL() {
 }
 
 //
-// initBuffers
+// initializeBuffers
 //
 // Initialize the buffers we'll need. For this demo, we just have
 // one object -- a simple two-dimensional square.
 //
-function initBuffers() {
-
+function initializeBuffers() {
+    //
     // Create a buffer for the square's vertices.
 
     squareVerticesBuffer = renderingContext.createBuffer();
@@ -82,12 +87,15 @@ function initBuffers() {
         renderingContext.ARRAY_BUFFER,
         squareVerticesBuffer
     );
+    
+    // Now create an array of vertices for the square. Note that the Z
+    // coordinate is always 0 here.
 
     var vertices = [
-        50.0,  50.0, -250.0,
-       -50.0,  50.0, -250.0,
-        50.0, -50.0, -250.0,
-       -50.0, -50.0, -250.0
+        50.0,  50.0,  0.0,
+       -50.0,  50.0,  0.0,
+        50.0, -50.0,  0.0,
+       -50.0, -50.0,  0.0
     ];    
 
     // Now pass the list of vertices into WebGL to build the shape. We
@@ -107,7 +115,8 @@ function initBuffers() {
 // Draw the scene.
 //
 function drawScene() {
-    // Clear the canvas before we start drawing on it.
+    //
+    // Clear the mainCanvas before we start drawing on it.
 
     renderingContext.clear (
         renderingContext.COLOR_BUFFER_BIT |
@@ -121,7 +130,7 @@ function drawScene() {
 
     projectionMatrix = makePerspective (
         45,
-        canvas.clientWidth / canvas.clientHeight,
+        mainCanvas.clientWidth / mainCanvas.clientHeight,
         10,
         100000
     );
@@ -129,12 +138,13 @@ function drawScene() {
     // Set the drawing position to the "identity" point, which is
     // the center of the scene.
 
-    loadIdentity();
+    //loadIdentity();
+    modelViewMatrix = Matrix.I(4);
 
     // Now move the drawing position a bit to where we want to start
     // drawing the square.
 
-    mvTranslate([-0.0, 0.0, -6.0]);
+    moveSquare([-0.0, 0.0, -250.0]);
 
     // Draw the square by binding the array buffer to the square's vertices
     // array, setting attributes, and pushing it to GL.
@@ -153,19 +163,23 @@ function drawScene() {
         0
     );
     
-    setMatrixUniforms();
+    setTransformUniform();
     
     renderingContext.drawArrays(renderingContext.TRIANGLE_STRIP, 0, 4);
 }
 
 //
-// initShaders
+// initializeShaders
 //
 // Initialize the shaders, so WebGL knows how to light our scene.
 //
-function initShaders() {
-    var fragmentShader = getShader(renderingContext, "shader-fs");
-    var vertexShader = getShader(renderingContext, "shader-vs");
+function initializeShaders() {
+    //
+    var vertexShader =
+        getShader(renderingContext, "mainVertexShader");
+        
+    var fragmentShader =
+        getShader(renderingContext, "mainFragmentShader");
 
     // Create the shader program
 
@@ -176,7 +190,6 @@ function initShaders() {
 
     // If creating the shader program failed, alert
 
-    //if (!renderingContext.getProgramParameter(shaderProgram, renderingContext.LINK_STATUS)) {
     if (renderingContext.getProgramParameter (
             shaderProgram,
             renderingContext.LINK_STATUS
@@ -194,6 +207,9 @@ function initShaders() {
         renderingContext.getAttribLocation(shaderProgram, "vertexPosition");
     
     renderingContext.enableVertexAttribArray(vertexPositionAttribute);
+    
+    transformUniform =
+        renderingContext.getUniformLocation(shaderProgram, "transform");
 }
 
 //
@@ -203,23 +219,24 @@ function initShaders() {
 // looking for a script with the specified ID.
 //
 function getShader(renderingContext, id) {
+    //
     var shaderScript = document.getElementById(id);
 
     // Didn't find an element with the specified ID; abort.
 
-    if (!shaderScript) {
+    if (shaderScript === null) {
         return null;
     }
 
     // Walk through the source element's children, building the
     // shader source string.
 
-    var theSource = "";
+    var shaderSource = "";
     var currentChild = shaderScript.firstChild;
 
-    while(currentChild) {
-        if (currentChild.nodeType == 3) {
-            theSource += currentChild.textContent;
+    while (currentChild !== null) {
+        if (currentChild.nodeType === Node.TEXT_NODE) {
+            shaderSource += currentChild.textContent;
         }
 
         currentChild = currentChild.nextSibling;
@@ -230,11 +247,11 @@ function getShader(renderingContext, id) {
 
     var shader;
 
-    if (shaderScript.type == "x-shader/x-fragment") {
+    if (shaderScript.type === "x-shader/x-fragment") {
         shader = renderingContext.createShader (
             renderingContext.FRAGMENT_SHADER
         );
-    } else if (shaderScript.type == "x-shader/x-vertex") {
+    } else if (shaderScript.type === "x-shader/x-vertex") {
         shader = renderingContext.createShader (
             renderingContext.VERTEX_SHADER
         );
@@ -244,7 +261,7 @@ function getShader(renderingContext, id) {
 
     // Send the source to the shader object
 
-    renderingContext.shaderSource(shader, theSource);
+    renderingContext.shaderSource(shader, shaderSource);
 
     // Compile the shader program
 
@@ -252,7 +269,6 @@ function getShader(renderingContext, id) {
 
     // See if it compiled successfully
 
-    //if (!renderingContext.getShaderParameter(shader, renderingContext.COMPILE_STATUS))
     if (renderingContext.getShaderParameter (
             shader,
             renderingContext.COMPILE_STATUS
@@ -273,26 +289,16 @@ function getShader(renderingContext, id) {
 // Matrix utility functions
 //
 
-function loadIdentity() {
-    mvMatrix = Matrix.I(4);
-}
-
-function multMatrix(m) {
-    mvMatrix = mvMatrix.x(m);
-}
-
-function mvTranslate(v) {
-    multMatrix (
-        Matrix.Translation($V([v[0], v[1], v[2]])).ensure4x4()
+function moveSquare(v) {
+    modelViewMatrix = modelViewMatrix.multiply (
+        Matrix.Translation(Vector.create([v[0], v[1], v[2]])).ensure4x4()
     );
 }
 
-function setMatrixUniforms() {
-    var transform = projectionMatrix.x(mvMatrix);
+function setTransformUniform() {
+    //
+    var transform = projectionMatrix.multiply(modelViewMatrix);
 
-    var transformUniform =
-        renderingContext.getUniformLocation(shaderProgram, "transform");
-    
     renderingContext.uniformMatrix4fv (
         transformUniform,
         false,
