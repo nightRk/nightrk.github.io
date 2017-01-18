@@ -1,41 +1,45 @@
-var gl;
+var renderingContext;
 
 function start() {
     //
-    var canvas = document.getElementById("mainCanvas");
+    var mainCanvas = document.getElementById("mainCanvas");
 
     // Initialize the GL context
-    gl = initWebGL(canvas);
+    renderingContext = initWebGL(mainCanvas);
     
     // Only continue if WebGL is available and working
-    if (gl == null)
+    if (renderingContext == null)
     {
         return;
     }
 
     // Set clear color to black, fully opaque
-    gl.clearColor(0.25, 0.25, 0.25, 1.0);
+    renderingContext.clearColor(0.25, 0.25, 0.25, 1.0);
+    //renderingContext.clearColor(0.349, 0.533, 0.482, 1.0);
 
     // Enable depth testing
-    gl.enable(gl.DEPTH_TEST);
+    renderingContext.enable(renderingContext.DEPTH_TEST);
 
     // Near things obscure far things
-    gl.depthFunc(gl.LEQUAL);
+    renderingContext.depthFunc(renderingContext.LEQUAL);
 
     // Clear the color as well as the depth buffer.
-    gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);  
+    renderingContext.clear (
+        renderingContext.COLOR_BUFFER_BIT |
+        renderingContext.DEPTH_BUFFER_BIT
+    );
 }
 
-function initWebGL(canvas) {
+function initWebGL(mainCanvas) {
     //
     // Try to grab the standard context.
-    gl = canvas.getContext("webgl");
+    renderingContext = mainCanvas.getContext("webgl");
 
     // If we don't have a GL context, give up now
-    if (gl == null)
+    if (renderingContext == null)
     {
         alert("Unable to initialize WebGL. Your browser may not support it.");
     }
 
-    return gl;
+    return renderingContext;
 }
